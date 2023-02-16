@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_absolute_error, accuracy_score, silhouette_score
 from sklearn import linear_model
 from sklearn.linear_model import Lasso
-from sklearn.preprocessing import StandardScaler
+from sklearn.feature_selection import RFE
 
 
 
@@ -18,12 +18,11 @@ class DataEngineering():
     Функция 3: Совмещение первой и второй функции.
     """
 
-    DICT_PARAMETERS =  {'alpha': [0.1, 0.25, 0.5, 0.625, 0.7, 0.9],
-                         'tol': [0.0001, 0.001, 0.01, 0.1]}
-    TAGS_AMOUNT = 10
-    START = 3 # минмиальный период для расчета скользящего среднего для метода rolling_features
-    END = 12  # вмакисмиальный период для расчета скользящего среднего для метода rolling_features
-
+    START = 6
+    END = 12
+    TAGS_AMOUNT = 6
+    LIMIT = 3
+    
     def __init__(self, data, features, target):         
         self.data = data
         self.features = features
@@ -38,12 +37,12 @@ class DataEngineering():
         """
 
         df = pd.DataFrame(self.data[self.target]) # датасет только с целевым тэгом
-        df = df.fillna(method = 'ffill', limit = 3)
+        df = df.fillna(method = 'ffill', limit = self.LIMIT)
         df.dropna(inplace = True)
 
         df_ = pd.DataFrame(self.data[self.features]) # датасет только с признаками
-        df_ = df_.fillna(method = 'ffill', limit = 6)
-        df_ = df_.fillna(method = 'bfill', limit = 6)
+        df_ = df_.fillna(method = 'ffill', limit = self.LIMIT*2)
+        df_ = df_.fillna(method = 'bfill', limit = self.LIMIT*2)
         df_.dropna(inplace = True)
 
         df = df.merge(df_, how = 'left', left_index=True, right_index=True)
@@ -129,7 +128,7 @@ class DataEngineering():
     
         return R2, best_alpha, best_shot,  best_lasso
 
-    def get_new_dataframe(self):
+    def get_new_dataframe(self, method = 'lasso'):
         """
         функция получения нового датасета с лучшими признаками, отоборанными по лассо.
 
@@ -143,7 +142,30 @@ class DataEngineering():
         self.data = data_
         self.features = features_
         
+        if method == 'lasso':            
+            R2, best_alpha, best_shot,  best_lasso = self.get_best_tag_Lasso()
+            return data_, best_alpha, best_shot
         
-        R2, best_alpha, best_shot,  best_lasso = self.get_best_tag_Lasso()
+        else:
+            best_shot = self.get_best_tag_rfe()
+            best_alpha = 0.1
+            return data_, best_alpha, best_shot
 
-        return data_, best_alpha, best_shot
+
+    
+    def get_best_tag_rfe(self, number_of_features = 5):
+        """
+        Ищем лучшие тэги для модели через метод sklearn RFE
+        https://scikit-learn.org/stable/modules/generated/sklearn.feature_selection.RFE.html"""
+
+        estimator = Lasso()
+        selector = RFE(estimator, n_features_to_select=number_of_features, step=1)
+        selector = selector.fit(self.data[self.features], self.data[self.target]) #np.array(self.features).reshape(-1, 1) появилась ошибка про 2D & 1D array
+        best_shot = list(selector.get_feature_names_out())  #Mask feature names according to selected features.
+
+        return best_shot
+
+
+    
+    
+
